@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 import jax_dmrg.errors as errors
 import jax_dmrg.operations as op
-import jax_dmrg.lz as lz
+import jax_dmrg.lanczos as lz
 
 
 def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
@@ -18,38 +18,53 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
     Es = np.zeros(N)
     for n in range(N-1):
         mps = mps_chain[n]
-        mpo = mpo_chain[n]
-        L = H_block[n]
         if not initialization:
-            R = H_block[n+1]
-            E, mps = lz.dmrg_solve(mps, L, R, mpo, lz_params)
+            E, mps = lz.dmrg_solve(mps_chain[n], H_block[n], H_block[n+1],
+                                   mpo_chain[n], lz_params)
             Es[n] = E
-        mps_L, C = op.qrpos(mps)
-        mps_chain[n+1] = op.leftcontract(C, mps_chain[n+1])
-        H_block[n] = op.XopL(L, mpo, mps_L)
+        mps_lorth, mps_right, R_new = update_from_left(mps, mps_chain[n+1],
+                                                       H_block[n],
+                                                       mpo_chain[n])
+        mps_chain[n] = mps_lorth
+        mps_chain[n+1] = mps_right
+        H_block[n+1] = R_new
     mps_L, C = op.qrpos(mps_chain[-1])
     mps_chain[-1] = mps_L
     H_block[-1] = op.joinR(C, H_block[-1])
     return (Es, mps_chain, H_block)
 
 
+def update_from_left(mps, mps_right, L, mpo):
+    mps_lorth, C = op.qrpos(mps)
+    mps_right = op.leftcontract(C, mps_right)
+    R_new = op.XopL(L, mpo, mps_lorth)
+    return (mps_lorth, mps_right, R_new)
+
+
 def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
     N = len(mpo_chain)
     Es = np.zeros(N)
     for n in range(N-1, -1, -1):
-        mps = mps_chain[n]
-        L = H_block[n]
-        R = H_block[n+1]
-        mpo = mpo_chain[n]
-        E, mps = lz.dmrg_solve(mps, L, R, mpo, lz_params)
+        E, mps = lz.dmrg_solve(mps_chain[n], H_block[n], H_block[n+1],
+                               mpo_chain[n], lz_params)
         Es[n] = E
-        C, mps_R = op.rqpos(mps)
-        mps_chain[n-1] = op.rightcontract(mps_chain[n-1], C)
-        H_block[n] = op.XopR(R, mpo, mps_R)
-    C, mps_R = op.rqpos(mps_chain[0])
+        mps_rorth, mps_left, L_new = update_from_right(mps, mps_chain[n-1],
+                                                       H_block[n+1],
+                                                       mpo_chain[n])
+        mps_chain[n] = mps_rorth
+        mps_chain[n-1] = mps_left
+        H_block[n] = L_new
+    C, mps_R = op.lqpos(mps_chain[0])
     mps_chain[0] = mps_R
     H_block[0] = op.joinL(H_block[0], C)
     return (Es, mps_chain, H_block)
+
+
+def update_from_right(mps, mps_left, R, mpo):
+    C, mps_rorth = op.lqpos(mps)
+    mps_left = op.rightcontract(mps_left, C)
+    L_new = op.XopR(R, mpo, mps_rorth)
+    return mps_rorth, mps_left, L_new
 
 
 def dmrg_single(mpo_chain, N_sweeps: int, maxchi: int,

@@ -7,20 +7,42 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import jax_dmrg.errors as errors
+import jax_dmrg.utils as utils
 ###############################################################################
 # INITIALIZERS
 ###############################################################################
-def finite_chis(N):
-    chis = []
-    raise NotImplementedError()
+
+
+def makechis(d, N, maxchi):
+    """Create the vector of chis for the chain.
+       This is a length-N+1 list of exponents of d. The exponents are of
+       the form
+       [0, 1, 2, 1, 0] (if N+1 is odd)
+       [0, 1, 2, 2, 1, 0] (if N+1 is even)
+       Any numbers in the above exceeding ln(maxchi) / ln(d) are replaced
+       with maxchi.
+    """
+    last = N
+    maxexp = int(np.log(maxchi) // np.log(d))
+    exp = list(range(0, (last+1)//2))
+    reverse = exp[::-1]
+    if last % 2 != 1:
+        exp = exp + [last//2]
+    exp = exp + reverse
+    for i in range(0, len(exp)):
+        if exp[i] > maxexp:
+            exp[i] = maxexp
+    chis = np.power(d, exp, dtype=int)
+    chis = jnp.array(chis)
     return chis
 
 
-def random_finite_mps(d, N):
-    """
-    """
-    mps_chain = [0 for _ in N]
-    raise NotImplementedError()
+def random_finite_mps(d, n, maxchi, dtype=jnp.float32):
+    chis = makechis(d, n, maxchi)
+    mps_shapes = []
+    for i in range(len(chis)-1):
+        mps_shapes.append((chis[i], d, chis[i+1]))
+    mps_chain = utils.random_tensors(mps_shapes, dtype=dtype)
     return mps_chain
 
 
@@ -52,6 +74,7 @@ def right_boundary_eye(chiM, dtype=jnp.float32):
     R[-1] = 1.
     R = jnp.array(R, dtype=dtype)
     return R
+
 
 def xx_mpo():
     """
@@ -159,6 +182,8 @@ def joinR(C, R):
 ###############################################################################
 # QR
 ###############################################################################
+
+
 def qrpos(mps):
     """
     Reshapes the (chiL, d, chiR) MPS tensor into a (chiL*d, chiR) matrix,
@@ -201,8 +226,8 @@ def lqpos(mps):
 
     RETURNS
     -------
-    L, mps_R:  A lower-triangular (chiL x chiL) matrix with a non-negative 
-               main-diagonal, and a right-orthogonal (chiL, d, chiR) MPS 
+    L, mps_R:  A lower-triangular (chiL x chiL) matrix with a non-negative
+               main-diagonal, and a right-orthogonal (chiL, d, chiR) MPS
                tensor such that mps = L @ mps_R.
     """
     chiL, d, chiR = mps.shape
@@ -216,8 +241,3 @@ def lqpos(mps):
     Q = jnp.conj(phases)[:, None] * Q
     mps_R = Q.reshape(mps.shape)
     return (L, mps_R)
-
-
-
-
-
