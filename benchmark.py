@@ -7,5 +7,5 @@ def tick():
 
 def tock(t0=0., dat=None):
     if dat is not None:
-        dat.block_until_ready()
+        _ = dat.block_until_ready()
     return time.perf_counter() - t0
