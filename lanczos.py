@@ -8,9 +8,9 @@ import jax_dmrg.map
 
 
 def lz_params(
-        ncv=10,
+        ncv=4,
         lz_tol=1E-12,
-        lz_maxiter=4
+        lz_maxiter=2
         ):
     params = {"ncv": ncv,
               "lz_tol": lz_tol,

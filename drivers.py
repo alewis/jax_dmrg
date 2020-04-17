@@ -33,7 +33,7 @@ def time_xx(chis=None, N=30, N_sweeps=2, fname="./timings.txt"):
     return timings
 
 
-def xx_ground_state(N, maxchi, N_sweeps, ncv=20, lz_tol=1E-6, lz_maxiter=10):
+def xx_ground_state(N, maxchi, N_sweeps, ncv=4, lz_tol=1E-12, lz_maxiter=2):
     """
     Find the ground state of the quantum XX model with single-site DMRG.
     """
