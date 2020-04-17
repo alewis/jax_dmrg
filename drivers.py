@@ -6,7 +6,8 @@ import jax_dmrg.lanczos as lz
 import jax_dmrg.dmrg as dmrg
 
 
-def time_xx(chis=None, N=30, N_sweeps=2, fname="./timings.txt"):
+def time_xx(chis=None, N=30, N_sweeps=2, fname="./timings.txt",
+            ncv=4, lz_tol=1E-12, lz_maxiter=2):
     timings = []
     if chis is None:
         chis = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
@@ -16,7 +17,8 @@ def time_xx(chis=None, N=30, N_sweeps=2, fname="./timings.txt"):
     for chi in chis:
         print("Timing chi= ", chi)
         _ = xx_ground_state(N, chi, 1)
-        _, _, _, timing = xx_ground_state(N, chi, N_sweeps)
+        _, _, _, timing = xx_ground_state(N, chi, N_sweeps, ncv=ncv,
+                lz_tol=lz_tol, lz_maxiter=lz_maxiter)
         print(timing)
         timings.append(timing)
     ts = np.zeros((chis.size, 4))
