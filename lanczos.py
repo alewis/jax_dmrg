@@ -7,15 +7,31 @@ import jax_dmrg.utils as utils
 import jax_dmrg.map
 
 
+def lz_params(
+        ncv=10,
+        lz_tol=1E-12,
+        lz_maxiter=4
+        ):
+    params = {"ncv": ncv,
+              "lz_tol": lz_tol,
+              "lz_maxiter": lz_maxiter}
+    return params
+
+
 @jax.jit
 def softnorm(v):
     return jnp.amax([jnp.linalg.norm(v), 1E-8])
 
 
-def dmrg_solve(A, L, R, mpo, n_krylov: int = 32, tol=1E-6, maxiter=10):
+def dmrg_solve(A, L, R, mpo, lz_params=None):
     """
     The local ground state step of single-site DMRG.
     """
+    if lz_params is None:
+        lz_params = lz_params()
+    keys = ["ncv", "lz_tol", "lz_maxiter"]
+    n_krylov, tol, maxiter = [lz_params[key] for key in keys]
+
     mpo_map = jax_dmrg.map.SingleMPOHeffMap(mpo, L, R)
     A_vec = jnp.ravel(A)
     E, eV, err = minimum_eigenpair(mpo_map, n_krylov, v0=A_vec,

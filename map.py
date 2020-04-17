@@ -326,9 +326,7 @@ class MPOEnvironmentMapR(MPOEnvironmentMap):
 @jax.tree_util.Partial
 @jax.jit
 def single_mpo_heff(mpo, L, R, A):
-    LA = jnp.einsum('aeb, ecd', L, A)
-    LAR = jnp.einsum('abcf, efd', LA, R)
-    newA = jnp.einsum('adefc, dfeb', LAR, mpo)
+    newA = jnp.einsum('fad, dhe, fgbh, gce', L, A, mpo, R)
     return newA
 
 
@@ -355,23 +353,23 @@ class SingleMPOHeffMap(AbstractMap):
         if len(R.shape) != 3:
             print("R must be a dim-3 array. Your shape: ", R.shape)
 
-        chiL, chiL2, ML_L = L.shape
+        ML_L, chiL, chiL2 = L.shape
         if ML_L != ML:
-            raise ValueError("Last dim of L (your shape was ", L.shape,
+            raise ValueError("First dim of L (your shape was ", L.shape,
                              ") must equal first dim of mpo (your shape was ",
                              mpo.shape, ")")
         if chiL != chiL2:
             raise ValueError("First two dims of L must be equal (your shape: ",
                              L.shape, ")")
-        chiR, chiR2, MR_R = R.shape
+        MR_R, chiR, chiR2 = R.shape
         if MR_R != MR:
-            raise ValueError("last dim of R (your shape was ", R.shape,
+            raise ValueError("First dim of R (your shape was ", R.shape,
                              ") must equal second dim of mpo (your shape: ",
                              mpo.shape, ")")
         if chiR != chiR2:
-            raise ValueError("First two dims of R must be equal (your shape: ",
+            raise ValueError("Last two dims of R must be equal (your shape: ",
                              R.shape, ")")
-        shape = (chiL*chiR*ML, chiL*chiR*MR)
+        shape = (ML*chiL*chiR, MR*chiL*chiR)
         super().__init__(shape, dtype=mpo.dtype, hermitian=True)
         self.data = [mpo, L, R]
 
@@ -379,8 +377,8 @@ class SingleMPOHeffMap(AbstractMap):
     @jax.jit
     def matvec(data, v):
         mpo, L, R = data
-        chiL, _, ML = L.shape
-        chiR, _, MR = R.shape
+        ML, chiL, _ = L.shape
+        MR, chiR, _ = R.shape
         d = mpo.shape[3]
         A = v.reshape((chiL, d, chiR))
         newA = single_mpo_heff(mpo, L, R, A)

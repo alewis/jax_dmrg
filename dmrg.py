@@ -10,70 +10,112 @@ import jax.numpy as jnp
 import jax_dmrg.errors as errors
 import jax_dmrg.operations as op
 import jax_dmrg.lanczos as lz
+import jax_dmrg.benchmark as benchmark
 
 
 def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
                   initialization=False):
     N = len(mpo_chain)
     Es = np.zeros(N)
+    t_lz = 0.
+    t_qr = 0.
+    t_up = 0.
     for n in range(N-1):
-        mps = mps_chain[n]
+        A = mps_chain[n]
         if not initialization:
-            E, mps = lz.dmrg_solve(mps_chain[n], H_block[n], H_block[n+1],
-                                   mpo_chain[n], lz_params)
+            t0_lz = benchmark.tick()
+            E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1],
+                                      mpo_chain[n], lz_params)
+            t_lz += benchmark.tock(t0_lz, A)
+
             Es[n] = E
-        mps_lorth, mps_right, R_new = update_from_left(mps, mps_chain[n+1],
-                                                       H_block[n],
-                                                       mpo_chain[n])
-        mps_chain[n] = mps_lorth
-        mps_chain[n+1] = mps_right
-        H_block[n+1] = R_new
-    mps_L, C = op.qrpos(mps_chain[-1])
-    mps_chain[-1] = mps_L
-    H_block[-1] = op.joinR(C, H_block[-1])
-    return (Es, mps_chain, H_block)
 
+        t0_qr = benchmark.tick()
+        A, C = op.qrpos(A)
+        t_qr += benchmark.tock(t0_qr, A)
 
-def update_from_left(mps, mps_right, L, mpo):
-    mps_lorth, C = op.qrpos(mps)
-    mps_right = op.leftcontract(C, mps_right)
-    R_new = op.XopL(L, mpo, mps_lorth)
-    return (mps_lorth, mps_right, R_new)
+        t0_up = benchmark.tick()
+        mps_chain[n] = A
+        H_block[n+1] = op.XopL(H_block[n], mpo_chain[n], A)
+        mps_chain[n+1] = op.leftcontract(C, mps_chain[n+1])
+        t_up += benchmark.tock(t0_up, mps_chain[n+1])
+
+    n = N-1
+    A = mps_chain[n]
+    if not initialization:
+        t0_lz = benchmark.tick()
+        E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1], mpo_chain[n],
+                                  lz_params)
+        t_lz += benchmark.tock(t0_lz, A)
+        Es[n] = E
+
+    t0_qr = benchmark.tick()
+    A, C = op.qrpos(A)
+    t_qr += benchmark.tock(t0_qr, A)
+
+    mps_chain[n] = A
+    return (Es, mps_chain, H_block, t_lz, t_qr, t_up)
 
 
 def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
     N = len(mpo_chain)
     Es = np.zeros(N)
-    for n in range(N-1, -1, -1):
-        E, mps = lz.dmrg_solve(mps_chain[n], H_block[n], H_block[n+1],
-                               mpo_chain[n], lz_params)
+    t_lz = 0.
+    t_qr = 0.
+    t_up = 0.
+    for n in range(N-1, 0, -1):
+        B = mps_chain[n]
+
+        t0_lz = benchmark.tick()
+        E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1],
+                                  mpo_chain[n], lz_params)
+        t_lz += benchmark.tock(t0_lz, B)
         Es[n] = E
-        mps_rorth, mps_left, L_new = update_from_right(mps, mps_chain[n-1],
-                                                       H_block[n+1],
-                                                       mpo_chain[n])
-        mps_chain[n] = mps_rorth
-        mps_chain[n-1] = mps_left
-        H_block[n] = L_new
-    C, mps_R = op.lqpos(mps_chain[0])
-    mps_chain[0] = mps_R
-    H_block[0] = op.joinL(H_block[0], C)
-    return (Es, mps_chain, H_block)
+
+        t0_qr = benchmark.tick()
+        C, B = op.lqpos(B)
+        t_qr += benchmark.tock(t0_qr, B)
+        mps_chain[n] = B
+
+        t0_up = benchmark.tick()
+        H_block[n] = op.XopR(H_block[n+1], mpo_chain[n], B)
+        mps_chain[n-1] = op.rightcontract(mps_chain[n-1], C)
+        t_up += benchmark.tock(t0_up, mps_chain[n-1])
+
+    n = 0
+    B = mps_chain[n]
+
+    t0_lz = benchmark.tick()
+    E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1], mpo_chain[n],
+                              lz_params)
+    t_lz += benchmark.tock(t0_lz, B)
+    Es[n] = E
+
+    t0_qr = benchmark.tick()
+    C, B = op.lqpos(B)
+    t_qr += benchmark.tock(t0_qr, B)
+    mps_chain[n] = B
+    return (Es, mps_chain, H_block, t_lz, t_qr, t_up)
 
 
-def update_from_right(mps, mps_left, R, mpo):
-    C, mps_rorth = op.lqpos(mps)
-    mps_left = op.rightcontract(mps_left, C)
-    L_new = op.XopR(R, mpo, mps_rorth)
-    return mps_rorth, mps_left, L_new
+def dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params):
+    EsR, mps_chain, H_block, t1_lz, t1_qr, t1_up = right_to_left(mps_chain,
+                                                                 H_block,
+                                                                 mpo_chain,
+                                                                 lz_params)
+    EsL, mps_chain, H_block, t2_lz, t2_qr, t2_up = left_to_right(mps_chain,
+                                                                 H_block,
+                                                                 mpo_chain,
+                                                                 lz_params)
+    t_lz = t1_lz + t2_lz
+    t_qr = t1_qr + t2_qr
+    t_up = t1_up + t2_up
+    return (EsR, EsL, mps_chain, H_block, t_lz, t_qr, t_up)
 
 
-def dmrg_single(mpo_chain, N_sweeps: int, maxchi: int,
-                lz_params: dict = None,
-                L=None, R=None, mps_chain=None):
-    """
-    Main loop for single-site finite-chain DMRG.
-    """
-
+def dmrg_single_initialization(mpo_chain, maxchi: int, N_sweeps: int,
+                               lz_params: dict = None,
+                               L=None, R=None, mps_chain=None):
     errflag, errstr = errors.check_natural(N_sweeps, "N_sweeps")
     if errflag:
         raise ValueError(errstr)
@@ -83,31 +125,59 @@ def dmrg_single(mpo_chain, N_sweeps: int, maxchi: int,
         raise ValueError(errstr)
 
     N = len(mpo_chain)
+    chiM = mpo_chain[0].shape[0]
+    dtype = mpo_chain[0].dtype
 
     if mps_chain is None:
-        mps_chain = op.random_finite_mps(N)
+        mps_chain = op.random_finite_mps(2, N, maxchi,
+                                         dtype=dtype)
 
     if L is None:
-        L = op.left_boundary_eye()
+        L = op.left_boundary_eye(chiM, dtype=dtype)
     if R is None:
-        R = op.right_boundary_eye()
-    H_block = [0 for _ in N]
+        R = op.right_boundary_eye(chiM, dtype=dtype)
+    H_block = [0 for _ in range(N+1)]
     H_block[0] = L
     H_block[-1] = R
 
-    Es = np.array(2*N_sweeps, N)
+    Es = np.zeros((2*N_sweeps, N))
+    _, mps_chain, H_block, t_lz, t_qr, t_up = left_to_right(mps_chain, H_block,
+                                                            mpo_chain,
+                                                            lz_params,
+                                                            initialization=True)
+    return (mps_chain, mpo_chain, H_block, Es, t_lz, t_qr, t_up)
 
-    print("Initializing chain...")
-    _, mps_chain, H_block = left_to_right(mps_chain, H_block, mpo_chain,
-                                          lz_params, initialization=True)
-    print("Initialization complete. And so it begins...")
+
+def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
+                lz_params: dict = None,
+                L=None, R=None, mps_chain=None):
+    """
+    Main loop for single-site finite-chain DMRG.
+    """
+    t0 = benchmark.tick()
+    init = dmrg_single_initialization(mpo_chain, maxchi, N_sweeps,
+                                      lz_params=lz_params, L=L, R=R,
+                                      mps_chain=mps_chain)
+    mps_chain, mpo_chain, H_block, Es, t_lz, t_qr, t_up = init
+
+    print("Initialization complete. And so it begins!")
     for sweep in range(N_sweeps):
-        EsR, mps_chain, H_block = right_to_left(mps_chain, H_block, mpo_chain,
-                                                lz_params)
-        EsL, mps_chain, H_block = left_to_right(mps_chain, H_block, mpo_chain,
-                                                lz_params)
+        out = dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params)
+        EsR, EsL, mps_chain, H_block, ti_lz, ti_qr, ti_up = out
+        t_lz += ti_lz
+        t_qr += ti_qr
+        t_up += ti_up
         Es[2*sweep, :] = EsL
         Es[2*sweep + 1, :] = EsR
-        E = 0.5*(jnp.mean(EsL)[0] + jnp.mean(EsR)[0])
-        print("Sweep: ", sweep, "<E>: ", E)
-    return (Es, mps_chain, H_block)
+        E = EsR[-1]
+
+        # E = 0.5*(jnp.mean(EsL) + jnp.mean(EsR))
+        print("Sweep:", sweep, "<E>:", E)
+    tf = benchmark.tock(t0, mps_chain[0])
+
+    timings = {"total": tf,
+               "lz": t_lz,
+               "qr": t_qr,
+               "update": t_up}
+
+    return (Es, mps_chain, H_block, timings)

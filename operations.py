@@ -33,7 +33,6 @@ def makechis(d, N, maxchi):
         if exp[i] > maxexp:
             exp[i] = maxexp
     chis = np.power(d, exp, dtype=int)
-    chis = jnp.array(chis)
     return chis
 
 
@@ -57,7 +56,7 @@ def left_boundary_eye(chiM, dtype=jnp.float32):
 
     L = np.zeros(chiM)
     L[0] = 1.
-    L = jnp.array(L, dtype=dtype)
+    L = jnp.array(L, dtype=dtype).reshape((chiM, 1, 1))
     return L
 
 
@@ -72,7 +71,7 @@ def right_boundary_eye(chiM, dtype=jnp.float32):
 
     R = np.zeros(chiM)
     R[-1] = 1.
-    R = jnp.array(R, dtype=dtype)
+    R = jnp.array(R, dtype=dtype).reshape((chiM, 1, 1))
     return R
 
 
@@ -95,13 +94,10 @@ def xx_mpo():
     return M
 
 
-def xx_chain(N):
-    return [xx_mpo() for _ in range(N)]
-
-
 ###############################################################################
 # CONTRACTIONS
 ###############################################################################
+@jax.jit
 def leftcontract(C, mps):
     """
     --0C1----0mps2-- -> --0mps2--
@@ -112,6 +108,7 @@ def leftcontract(C, mps):
     return mps
 
 
+@jax.jit
 def rightcontract(mps, C):
     """
     --0mps2----0C1-- -> --0mps2--
@@ -122,8 +119,10 @@ def rightcontract(mps, C):
     return mps
 
 
+@jax.jit
 def XopL(L, mpo, mps):
     """
+    **FIX**
     ----0mps2--      ---
     |     1          |
     2     3          2
@@ -133,10 +132,11 @@ def XopL(L, mpo, mps):
     -----mps*--      ---
     """
     mps_d = jnp.conj(mps)
-    L = jnp.einsum("hed, hagf, dfc, egb", L, mpo, mps, mps_d)
+    L = jnp.einsum("fed, fahg, dgc, ehb", L, mpo, mps, mps_d)
     return L
 
 
+@jax.jit
 def XopR(R, mpo, mps):
     """
     ---0mps2--       --
@@ -148,7 +148,7 @@ def XopR(R, mpo, mps):
     ----mps*--|      --
     """
     mps_d = jnp.conj(mps)
-    R = jnp.einsum("hed, ahgf, cfd, bge", R, mpo, mps, mps_d)
+    R = jnp.einsum("fed, afgh, cgd, bhe", R, mpo, mps, mps_d)
     return R
 
 
@@ -163,7 +163,8 @@ def joinL(L, C):
     |          |
     ----       ---
     """
-    return jnp.dot(L, C)
+    res = jnp.einsum("abd, dc", L, C)
+    return res
 
 
 @jax.jit
@@ -177,13 +178,14 @@ def joinR(C, R):
        |           |
     -0C1          --
     """
-    return jnp.dot(C, R)
+    res = jnp.einsum("adc, bd", R, C)
+    return res
+
 
 ###############################################################################
 # QR
 ###############################################################################
-
-
+@jax.jit
 def qrpos(mps):
     """
     Reshapes the (chiL, d, chiR) MPS tensor into a (chiL*d, chiR) matrix,
@@ -191,6 +193,9 @@ def qrpos(mps):
     have a non-negative main diagonal. A new left-orthogonal
     (chiL, d, chiR) MPS tensor (reshaped from Q) is returned along with
     R.
+
+    In addition to being phase-adjusted, R is normalized by division with
+    its L2 norm.
 
     PARAMETERS
     ----------
@@ -208,10 +213,12 @@ def qrpos(mps):
     phases = jnp.sign(jnp.diag(R))
     Q = Q*phases
     R = jnp.conj(phases)[:, None] * R
+    R = R / jnp.linalg.norm(R)
     mps_L = Q.reshape(mps.shape)
     return (mps_L, R)
 
 
+@jax.jit
 def lqpos(mps):
     """
     Reshapes the (chiL, d, chiR) MPS tensor into a (chiL, d*chiR) matrix,
@@ -219,6 +226,8 @@ def lqpos(mps):
     have a non-negative main diagonal. A new right-orthogonal
     (chiL, d, chiR) MPS tensor (reshaped from Q) is returned along with
     L.
+    In addition to being phase-adjusted, L is normalized by division with
+    its L2 norm.
 
     PARAMETERS
     ----------
@@ -238,6 +247,7 @@ def lqpos(mps):
     L = jnp.conj(Ldag.T)
     phases = jnp.sign(jnp.diag(L))
     L = L*phases
+    L = L / jnp.linalg.norm(L)
     Q = jnp.conj(phases)[:, None] * Q
     mps_R = Q.reshape(mps.shape)
     return (L, mps_R)
