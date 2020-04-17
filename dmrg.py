@@ -145,7 +145,8 @@ def dmrg_single_initialization(mpo_chain, maxchi: int, N_sweeps: int,
                                                             mpo_chain,
                                                             lz_params,
                                                             initialization=True)
-    return (mps_chain, mpo_chain, H_block, Es, t_lz, t_qr, t_up)
+    t_init = t_lz + t_qr + t_up
+    return (mps_chain, mpo_chain, H_block, Es, t_init)
 
 
 def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
@@ -158,9 +159,12 @@ def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
     init = dmrg_single_initialization(mpo_chain, maxchi, N_sweeps,
                                       lz_params=lz_params, L=L, R=R,
                                       mps_chain=mps_chain)
-    mps_chain, mpo_chain, H_block, Es, t_lz, t_qr, t_up = init
+    mps_chain, mpo_chain, H_block, Es, t_init = init
 
     print("Initialization complete. And so it begins!")
+    t_lz = 0.
+    t_qr = 0.
+    t_up = 0.
     for sweep in range(N_sweeps):
         out = dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params)
         EsR, EsL, mps_chain, H_block, ti_lz, ti_qr, ti_up = out
@@ -176,6 +180,7 @@ def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
     tf = benchmark.tock(t0, mps_chain[0])
 
     timings = {"total": tf,
+               "initialization": t_init,
                "lz": t_lz,
                "qr": t_qr,
                "update": t_up}
