@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax_dmrg.errors as errors
 import jax_dmrg.utils as utils
+import tensornetwork#.ncon
 ###############################################################################
 # INITIALIZERS
 ###############################################################################
@@ -181,6 +182,80 @@ def joinR(C, R):
     res = jnp.einsum("adc, bd", R, C)
     return res
 
+
+#@jax.tree_util.Partial
+@jax.jit
+def single_mpo_heff(mpo, L, R, A):
+    tensors = [L, A, mpo, R]
+    idxs = [[2, -1, 1],
+            [1, 3, 4],
+            [2, 5, -2, 3],
+            [5, -3, 4]]
+    newA = tensornetwork.ncon(tensors, idxs, backend="jax")
+    return newA
+
+
+def single_mpo_heff_np(mpo, L, R, A):
+    tensors = [L, A, mpo, R]
+    idxs = [[2, -1, 1],
+            [1, 3, 4],
+            [2, 5, -2, 3],
+            [5, -3, 4]]
+    newA = tensornetwork.ncon(tensors, idxs)
+    return newA
+
+
+@jax.tree_util.Partial
+@jax.jit
+def single_mpo_heff1(mpo, L, R, A):
+    newA = jnp.einsum('fad, dhe, fgbh, gce', L, A, mpo, R)
+    return newA
+
+
+@jax.tree_util.Partial
+@jax.jit
+def single_mpo_heff2(mpo, L, R, A):
+    tensors = [L, A, mpo, R]
+    idxs = [[3, -1, 1],
+            [1, 5, 2],
+            [3, 4, -2, 5],
+            [4, -3, 2]]
+    newA = tensornetwork.ncon(tensors, idxs, backend="jax")
+    return newA
+
+
+
+@jax.jit
+def single_mpo_heff5(mpo, L, R, A):
+    newA = jnp.einsum('ead, dfg, ehbf, hcg', L, A, mpo, R)
+    return newA
+
+@jax.jit
+def single_mpo_heff4(mpo, L, R, A):
+    chiM, _, _, _ = mpo.shape
+    chiL, d, chiR = A.shape
+    #LA = jnp.einsum("abe, ecd", L, A)
+    LA = jnp.matmul(L.reshape(chiM*chiL, chiL), A.reshape(chiL, d*chiR))
+    LA = LA.reshape(chiM, chiL, d, chiR)
+    LAM1 = jnp.einsum("eafd, ecbf", LA, mpo) #chiL, d, chiM, chiR
+
+
+
+    #  LA = LA.transpose((3, 0, 2, 1)).reshape((chiL*chiR, d*chiM))
+    #  mpo = mpo.transpose((0, 2, 3, 1)).reshape((d*chiM, d*chiM))
+    #  LAM = jnp.matmul(LA, mpo).reshape((chiL, chiR, d, chiM))
+    #  print(LAM.shape)
+    #  LAM = LAM.transpose((0, 3, 1, 2))
+
+    #  LAM = LAM.transpose((0, 3, 1, 2)).reshape((chiL*d, chiM*chiR))
+    #LAM1 = LAM1.transpose((0, 3, 1, 2)).reshape((chiL*d, chiM*chiR))
+    #LAM1 = LAM1.reshape((chiL*d, chiM*chiR))
+    LAM1 = LAM1.reshape((chiL*d, chiM*chiR))
+    # print(LAM.shape)
+    Rt = R.transpose((0, 2, 1)).reshape((chiR*chiM, chiR))
+    LAMR = jnp.matmul(LAM1, Rt)
+    newA = LAMR.reshape((chiL, d, chiR))
+    return newA
 
 ###############################################################################
 # QR

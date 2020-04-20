@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import jax_dmrg.operations as ops
 
 
 class AbstractMap(jax.ShapedArray):
@@ -323,13 +324,6 @@ class MPOEnvironmentMapR(MPOEnvironmentMap):
         return r_vec
 
 
-@jax.tree_util.Partial
-@jax.jit
-def single_mpo_heff(mpo, L, R, A):
-    newA = jnp.einsum('fad, dhe, fgbh, gce', L, A, mpo, R)
-    return newA
-
-
 class SingleMPOHeffMap(AbstractMap):
     """
     ---A---
@@ -381,6 +375,18 @@ class SingleMPOHeffMap(AbstractMap):
         MR, chiR, _ = R.shape
         d = mpo.shape[3]
         A = v.reshape((chiL, d, chiR))
-        newA = single_mpo_heff(mpo, L, R, A)
+        newA = ops.single_mpo_heff(mpo, L, R, A)
+        #newA = jnp.einsum('fad, dhe, fgbh, gce', L, A, mpo, R)
         newv = newA.reshape((chiL*d*chiR))
         return newv
+
+
+def np_matvec(data, v):
+    mpo, L, R = data
+    ML, chiL, _ = L.shape
+    MR, chiR, _ = R.shape
+    d = mpo.shape[3]
+    A = v.reshape((chiL, d, chiR))
+    newA = ops.single_mpo_heff_np(mpo, L, R, A)
+    newv = newA.reshape((chiL*d*chiR))
+    return newv

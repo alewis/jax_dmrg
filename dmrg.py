@@ -20,12 +20,15 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
     t_lz = 0.
     t_qr = 0.
     t_up = 0.
+    keys = ["ncv", "lz_tol", "lz_maxiter"]
+    lz_param_list = [lz_params[key] for key in keys]
+
     for n in range(N-1):
         A = mps_chain[n]
         if not initialization:
             t0_lz = benchmark.tick()
             E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1],
-                                      mpo_chain[n], lz_params)
+                                 mpo_chain[n], *lz_param_list)
             t_lz += benchmark.tock(t0_lz, A)
 
             Es[n] = E
@@ -44,8 +47,9 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
     A = mps_chain[n]
     if not initialization:
         t0_lz = benchmark.tick()
-        E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1], mpo_chain[n],
-                                  lz_params)
+        E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1],
+                                      mpo_chain[n],
+                                      *lz_param_list)
         t_lz += benchmark.tock(t0_lz, A)
         Es[n] = E
 
@@ -58,6 +62,8 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
 
 
 def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
+    keys = ["ncv", "lz_tol", "lz_maxiter"]
+    lz_param_list = [lz_params[key] for key in keys]
     N = len(mpo_chain)
     Es = np.zeros(N)
     t_lz = 0.
@@ -68,7 +74,7 @@ def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
 
         t0_lz = benchmark.tick()
         E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1],
-                                  mpo_chain[n], lz_params)
+                             mpo_chain[n], *lz_param_list)
         t_lz += benchmark.tock(t0_lz, B)
         Es[n] = E
 
@@ -87,7 +93,7 @@ def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
 
     t0_lz = benchmark.tick()
     E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1], mpo_chain[n],
-                              lz_params)
+                              *lz_param_list)
     t_lz += benchmark.tock(t0_lz, B)
     Es[n] = E
 
