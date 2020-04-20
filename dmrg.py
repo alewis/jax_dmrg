@@ -137,6 +137,7 @@ def dmrg_single_initialization(mpo_chain, maxchi: int, N_sweeps: int,
     if mps_chain is None:
         mps_chain = op.random_finite_mps(2, N, maxchi,
                                          dtype=dtype)
+    print("chain: ", [mps.shape[0] for mps in mps_chain])
 
     if L is None:
         L = op.left_boundary_eye(chiM, dtype=dtype)

@@ -178,6 +178,7 @@ def minimum_eigenpair_jit(A_mv, A_data, n_krylov, maxiter, tol, v0):
     return (E, v, err)
 
 
+
 def minimum_eigenpair(A_op, n_krylov, tol=1E-6, rtol=1E-9, maxiter=10,
                       v0=None, verbose=False):
     """
