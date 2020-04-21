@@ -47,7 +47,7 @@ def makechis(d, N, maxchi):
                 chi = maxchi
         else:
             chi = maxchi
-        chis[N+1 - k] = chi
+        chis[N - k] = chi
     return chis
 
 
