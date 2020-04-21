@@ -147,8 +147,15 @@ def XopL(L, mpo, mps):
     -----mps*--      ---
     """
     mps_d = jnp.conj(mps)
-    L = jnp.einsum("fed, fahg, dgc, ehb", L, mpo, mps, mps_d)
+    L = jnp.einsum("egd, eahf, dfc, ghb", L, mpo, mps, mps_d)
     return L
+
+
+def energy(L, R, mpo_chain, mps_chain):
+    for mps, mpo in zip(mps_chain, mpo_chain):
+        L = XopL(L, mpo, mps)
+    E = jnp.sum(L*R)
+    return E
 
 
 @jax.jit

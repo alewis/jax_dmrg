@@ -137,7 +137,8 @@ def dmrg_single_initialization(mpo_chain, maxchi: int, N_sweeps: int,
     if mps_chain is None:
         mps_chain = op.random_finite_mps(2, N, maxchi,
                                          dtype=dtype)
-    print("chain: ", [mps.shape[0] for mps in mps_chain])
+    chis = [mps.shape[0] for mps in mps_chain] + [mps_chain[-1].shape[-1]]
+    print("chis: ", chis)
 
     if L is None:
         L = op.left_boundary_eye(chiM, dtype=dtype)
@@ -172,18 +173,20 @@ def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
     t_lz = 0.
     t_qr = 0.
     t_up = 0.
+    N = len(mps_chain)
     for sweep in range(N_sweeps):
         out = dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params)
         EsR, EsL, mps_chain, H_block, ti_lz, ti_qr, ti_up = out
         t_lz += ti_lz
         t_qr += ti_qr
         t_up += ti_up
-        Es[2*sweep, :] = EsL
-        Es[2*sweep + 1, :] = EsR
-        E = EsR[-1]
+        E = op.energy(H_block[0], H_block[-1], mpo_chain, mps_chain)
+        #  Es[2*sweep, :] = EsL
+        #  Es[2*sweep + 1, :] = EsR
+        #  E = EsR[-1]
 
         # E = 0.5*(jnp.mean(EsL) + jnp.mean(EsR))
-        print("Sweep:", sweep, "<E>:", E)
+        print("Sweep:", sweep, "<E>:", E/N)
     tf = benchmark.tock(t0, mps_chain[0])
 
     timings = {"total": tf,
