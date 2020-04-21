@@ -39,7 +39,7 @@ def makechis(d, N, maxchi):
 
     chirs = []
     trunc = False
-    for k in range(N//2):#range(N-1, middle-1, -1):
+    for k in range(middle):#range(N-1, middle-1, -1):
         if not trunc:
             chi = d**k
             if chi > maxchi:
