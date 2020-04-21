@@ -24,16 +24,30 @@ def makechis(d, N, maxchi):
        with maxchi.
     """
     last = N
-    maxexp = int(np.log(maxchi) // np.log(d))
-    exp = list(range(0, (last+1)//2))
-    reverse = exp[::-1]
-    if last % 2 != 1:
-        exp = exp + [last//2]
-    exp = exp + reverse
-    for i in range(0, len(exp)):
-        if exp[i] > maxexp:
-            exp[i] = maxexp
-    chis = np.power(d, exp, dtype=int)
+    chis = np.zeros(N+1, dtype=np.int)
+    trunc = False
+    middle = -(-(N+1) // 2)
+    for k in range(middle):
+        if not trunc:
+            chi = d**k
+            if chi > maxchi:
+                trunc = True
+                chi = maxchi
+        else:
+            chi = maxchi
+        chis[k] = chi
+
+    chirs = []
+    trunc = False
+    for k in range(N//2):#range(N-1, middle-1, -1):
+        if not trunc:
+            chi = d**k
+            if chi > maxchi:
+                trunc = True
+                chi = maxchi
+        else:
+            chi = maxchi
+        chis[N+1 - k] = chi
     return chis
 
 
