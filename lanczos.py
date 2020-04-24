@@ -174,8 +174,8 @@ def minimum_eigenpair_jit(A_mv, A_data, n_krylov, maxiter, tol, v0):
     """
     v = v0
     for it in range(maxiter):
-        E, v, err = eigenpair_iteration(A_mv, A_data, v, n_krylov)
-    return (E, v, err)
+        E, v, _ = eigenpair_iteration(A_mv, A_data, v, n_krylov)
+    return (E, v, 0)
 
 
 
@@ -204,18 +204,18 @@ def minimum_eigenpair(A_op, n_krylov, tol=1E-6, rtol=1E-9, maxiter=10,
         v, = utils.random_tensors([(n,)], dtype=A_op.dtype)
     else:
         v = v0
-    olderr = 0.
+    #olderr = 0.
     A_mv = A_op.matvec
     A_data = A_op.data
     for it in range(maxiter):
         E, v, err = eigenpair_iteration(A_mv, A_data, v, n_krylov)
-        if verbose:
-            print("LZ Iteration: ", it)
-            print("\t E=", E, "err= ", err)
-        if jnp.abs(err - olderr) < rtol or err < tol:
-            return (E, v, err)
-        if not it % 3:
-            olderr = err
+        #  if verbose:
+        #      print("LZ Iteration: ", it)
+        #      print("\t E=", E, "err= ", err)
+        #  if jnp.abs(err - olderr) < rtol or err < tol:
+        #      return (E, v, err)
+        #  if not it % 3:
+        #      olderr = err
     if verbose:
         print("Warning: Lanczos solve exited without converging.")
     return (E, v, err)
@@ -232,10 +232,22 @@ def eigenpair_iteration(A_matvec, A_data, v, n_krylov):
     min_eVT = eVsT[:, 0]
     psi = K @ min_eVT
     psi = psi / softnorm(psi)
-    Apsi = A_matvec(A_data, psi)
-    err = jnp.linalg.norm(jnp.abs(E*psi - Apsi))
-    return (E, psi, err)
+    #  Apsi = A_matvec(A_data, psi)
+    #  err = jnp.linalg.norm(jnp.abs(E*psi - Apsi))
+    return (E, psi, 0)
 
+
+@jax.jit
+def trid_iter(tup, x, A_matvec, A_data):  # A_matvec, A_data, tup
+    v_km1, v_k, beta_k = tup
+    v_temp = A_matvec(A_data, v_k)
+    alpha = v_k @ v_temp
+    v = v_temp - beta_k * v_km1 - alpha * v_k
+    beta = softnorm(v)
+    v = v / beta
+    carry = (v_k, v, beta)
+    stack = (v_k, alpha, beta)
+    return (carry, stack)
 
 @partial(jax.jit, static_argnums=(3,))
 def tridiagonalize(A_matvec, A_data, v0, n_krylov):
@@ -259,21 +271,25 @@ def tridiagonalize(A_matvec, A_data, v0, n_krylov):
     T (n_krylov, n_krylov) : Tridiagonal projection of A onto V.
     """
 
-    v = v0/jnp.linalg.norm(v0)
+    v = v0/softnorm(v0)
 
-    def trid_iter(tup, x):  # A_matvec, A_data, tup
-        v_km1, v_k, beta_k = tup
-        v_temp = A_matvec(A_data, v_k)
-        alpha = v_k @ v_temp
-        v = v_temp - beta_k * v_km1 - alpha * v_k
-        beta = jnp.linalg.norm(v)
-        v = v / beta
-        carry = (v_k, v, beta)
-        stack = (v_k, alpha, beta)
-        return (carry, stack)
+    @jax.jit
+    def this_iter(tup, x):
+        return trid_iter(tup, x, A_matvec, A_data)
+
+    #  def trid_iter(tup, x):  # A_matvec, A_data, tup
+    #      v_km1, v_k, beta_k = tup
+    #      v_temp = A_matvec(A_data, v_k)
+    #      alpha = v_k @ v_temp
+    #      v = v_temp - beta_k * v_km1 - alpha * v_k
+    #      beta = jnp.linalg.norm(v)
+    #      v = v / beta
+    #      carry = (v_k, v, beta)
+    #      stack = (v_k, alpha, beta)
+    #      return (carry, stack)
 
     v0_km1 = jnp.zeros(v0.size, dtype=v0.dtype)
-    _, tup = jax.lax.scan(trid_iter, (v0_km1, v, 0.), None, length=n_krylov)
+    _, tup = jax.lax.scan(this_iter, (v0_km1, v, 0.), None, length=n_krylov)
     vs, alphas, betas = tup
 
     K = vs.T

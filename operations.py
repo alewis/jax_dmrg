@@ -150,12 +150,50 @@ def XopL(L, mpo, mps):
     L = jnp.einsum("egd, eahf, dfc, ghb", L, mpo, mps, mps_d)
     return L
 
+@jax.jit
+def XL(L, mps):
+    """
+    ----0mps2--      ---
+    |     1          |
+    1     |          1
+    L     |          L
+    0     |          0
+    |     1          |
+    ----0mps*2-      ---
+    """
+    mps_d = jnp.conj(mps)
+    L = jnp.einsum("cd, deb, cea", L, mps, mps_d)
+    return L
+
+@jax.jit
+def XnoL(mps):
+    """
+    ----0mps2--      ---
+    |     1          |
+    |     |          1
+    |     |          L
+    |     |          0
+    |     1          |
+    ----0mps*2-      ---
+    """
+    mps_d = jnp.conj(mps)
+    L = jnp.einsum("cdb, cda", mps, mps_d)
+    return L
+
 
 def energy(L, R, mpo_chain, mps_chain):
     for mps, mpo in zip(mps_chain, mpo_chain):
         L = XopL(L, mpo, mps)
-    E = jnp.sum(L*R)
+    E = jnp.einsum("abc, abc", L, R)
     return E
+
+
+def norm(mps_chain):
+    L = XnoL(mps_chain[0])
+    for mps in mps_chain[1:]:
+        L = XL(L, mps)
+    n = jnp.einsum("aa", L)
+    return n
 
 
 @jax.jit

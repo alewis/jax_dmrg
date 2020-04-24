@@ -112,8 +112,6 @@ def time_contract(contract_fs, funcnames, chis,
     return ts
 
 
-
-
 def time_xx(chis=None, N=100, N_sweeps=1, fname="./xxtimings.txt",
         ncv=10, lz_tol=1E-12, lz_maxiter=4):
     timings = []

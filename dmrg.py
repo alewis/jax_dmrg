@@ -28,7 +28,7 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
         if not initialization:
             t0_lz = benchmark.tick()
             E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1],
-                                 mpo_chain[n], *lz_param_list)
+                                      mpo_chain[n], *lz_param_list)
             t_lz += benchmark.tock(t0_lz, A)
 
             Es[n] = E
@@ -48,8 +48,8 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
     if not initialization:
         t0_lz = benchmark.tick()
         E, A, err = lz.dmrg_solve(A, H_block[n], H_block[n+1],
-                                      mpo_chain[n],
-                                      *lz_param_list)
+                                  mpo_chain[n],
+                                  *lz_param_list)
         t_lz += benchmark.tock(t0_lz, A)
         Es[n] = E
 
@@ -61,7 +61,7 @@ def left_to_right(mps_chain, H_block, mpo_chain, lz_params,
     return (Es, mps_chain, H_block, t_lz, t_qr, t_up)
 
 
-def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
+def right_to_left(mps_chain, H_block, mpo_chain, lz_params, initialization=False):
     keys = ["ncv", "lz_tol", "lz_maxiter"]
     lz_param_list = [lz_params[key] for key in keys]
     N = len(mpo_chain)
@@ -71,12 +71,12 @@ def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
     t_up = 0.
     for n in range(N-1, 0, -1):
         B = mps_chain[n]
-
-        t0_lz = benchmark.tick()
-        E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1],
-                             mpo_chain[n], *lz_param_list)
-        t_lz += benchmark.tock(t0_lz, B)
-        Es[n] = E
+        if not initialization:
+            t0_lz = benchmark.tick()
+            E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1],
+                                 mpo_chain[n], *lz_param_list)
+            t_lz += benchmark.tock(t0_lz, B)
+            Es[n] = E
 
         t0_qr = benchmark.tick()
         C, B = op.lqpos(B)
@@ -91,11 +91,12 @@ def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
     n = 0
     B = mps_chain[n]
 
-    t0_lz = benchmark.tick()
-    E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1], mpo_chain[n],
-                              *lz_param_list)
-    t_lz += benchmark.tock(t0_lz, B)
-    Es[n] = E
+    if not initialization:
+        t0_lz = benchmark.tick()
+        E, B, err = lz.dmrg_solve(B, H_block[n], H_block[n+1], mpo_chain[n],
+                                  *lz_param_list)
+        t_lz += benchmark.tock(t0_lz, B)
+        Es[n] = E
 
     t0_qr = benchmark.tick()
     C, B = op.lqpos(B)
@@ -105,6 +106,10 @@ def right_to_left(mps_chain, H_block, mpo_chain, lz_params):
 
 
 def dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params):
+    #  EsR, mps_chain, H_block, t1_lz, t1_qr, t1_up = right_to_left(mps_chain,
+    #                                                               H_block,
+    #                                                               mpo_chain,
+    #                                                               lz_params)
     EsR, mps_chain, H_block, t1_lz, t1_qr, t1_up = right_to_left(mps_chain,
                                                                  H_block,
                                                                  mpo_chain,
@@ -153,6 +158,10 @@ def dmrg_single_initialization(mpo_chain, maxchi: int, N_sweeps: int,
                                                             mpo_chain,
                                                             lz_params,
                                                             initialization=True)
+    #  _, mps_chain, H_block, t_lz, t_qr, t_up = right_to_left(mps_chain, H_block,
+    #                                                          mpo_chain,
+    #                                                          lz_params,
+    #                                                          initialization=True)
     t_init = t_lz + t_qr + t_up
     return (mps_chain, mpo_chain, H_block, Es, t_init)
 
@@ -177,16 +186,20 @@ def dmrg_single(mpo_chain, maxchi: int, N_sweeps: int,
     for sweep in range(N_sweeps):
         out = dmrg_single_iteration(mps_chain, H_block, mpo_chain, lz_params)
         EsR, EsL, mps_chain, H_block, ti_lz, ti_qr, ti_up = out
+        #  print(EsR)
+        #  print(EsL)
+        
         t_lz += ti_lz
         t_qr += ti_qr
         t_up += ti_up
         E = op.energy(H_block[0], H_block[-1], mpo_chain, mps_chain)
+        norm = op.norm(mps_chain)
         #  Es[2*sweep, :] = EsL
         #  Es[2*sweep + 1, :] = EsR
         #  E = EsR[-1]
 
         # E = 0.5*(jnp.mean(EsL) + jnp.mean(EsR))
-        print("Sweep:", sweep, "<E>:", E/N)
+        print("Sweep:", sweep, "<E>:", E, "<psi>:", norm)
     tf = benchmark.tock(t0, mps_chain[0])
 
     timings = {"total": tf,
