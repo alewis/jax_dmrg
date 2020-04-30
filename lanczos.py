@@ -141,6 +141,7 @@ def dmrg_solve(A, L, R, mpo, n_krylov, tol, maxiter):
     #                                     A_vec)
     E, eV, err = minimum_eigenpair(mpo_map, n_krylov, maxiter=maxiter, tol=tol,
                                    v0=A_vec)
+    #print(err)
     newA = eV.reshape(A.shape)
     return (E, newA, err)
 
@@ -197,6 +198,7 @@ def minimum_eigenpair(A_op, n_krylov, tol=1E-6, rtol=1E-9, maxiter=10,
 
     """
     m, n = A_op.shape
+    #verbose = True
     if m != n:
         raise ValueError("Lanczos requires a Hermitian matrix; your shape was",
                          A_op.shape)
@@ -204,7 +206,8 @@ def minimum_eigenpair(A_op, n_krylov, tol=1E-6, rtol=1E-9, maxiter=10,
         v, = utils.random_tensors([(n,)], dtype=A_op.dtype)
     else:
         v = v0
-    #olderr = 0.
+    #verbose=True
+    olderr = 0.
     A_mv = A_op.matvec
     A_data = A_op.data
     for it in range(maxiter):
@@ -216,8 +219,9 @@ def minimum_eigenpair(A_op, n_krylov, tol=1E-6, rtol=1E-9, maxiter=10,
         #      return (E, v, err)
         #  if not it % 3:
         #      olderr = err
-    if verbose:
-        print("Warning: Lanczos solve exited without converging.")
+    #if verbose:
+        
+    #print("Warning: Lanczos solve exited without converging.")
     return (E, v, err)
 
 
@@ -232,9 +236,10 @@ def eigenpair_iteration(A_matvec, A_data, v, n_krylov):
     min_eVT = eVsT[:, 0]
     psi = K @ min_eVT
     psi = psi / softnorm(psi)
+    err = 10
     #  Apsi = A_matvec(A_data, psi)
     #  err = jnp.linalg.norm(jnp.abs(E*psi - Apsi))
-    return (E, psi, 0)
+    return (E, psi, err)
 
 
 @jax.jit

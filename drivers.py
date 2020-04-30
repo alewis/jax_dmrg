@@ -7,8 +7,88 @@ import jax_dmrg.utils as utils
 import jax_dmrg.lanczos as lz
 import jax_dmrg.dmrg as dmrg
 import jax_dmrg.benchmark as benchmark
-import jax_dmrg.map 
+import jax_dmrg.map
 
+
+def time_dmrg_eigensolve(chis, n_krylov, d=2, chiM=4, n_restart=1,
+                         n_tries=10,
+                         fname="./dmrg_eigen_timings.txt"):
+    """
+    Times the lanczos minimum eigenproblem on a single DMRG site using
+    random float32 input.
+
+    PARAMETERS
+    ---------
+    chis     : A list or array of integer-valued MPS bond dimensions. It will
+               be iterated over and a timing will be produced for each.
+    n_krylov : Size of the Krylov subspace.
+    d        : Physical dimension.
+    chiM     : MPO bond dimension.
+    n_restart: The Lanczos iteration is repeated this many times - at each
+               restart a new Krylov space is built and a new set of Ritz
+               eigenvectors are computed. Therefore, the matvec operation
+               will be called n_krylov * n_restart times (the Lanczos solve
+               does not terminate early at convergence). The behaviour of
+               an unrestarted Lanczos algorithm is roughly recovered by
+               setting n_restart=1, n_krylov=ncv.
+    n_tries  : Each chi is timed this many times. The reported time is the
+               minimum one observed. A single additional, untimed, warmup run
+               performed for each chi.
+    fname    : The timings are saved to disk at this location.
+
+    RETURNS
+    ------
+    timings (array, (2, len(chis))) : timings[0, :] = chis
+                                      timings[1, :] is the timings.
+    This array is also saved to disk, and can be recovered by
+    timings = np.loadtxt(fname).
+
+    """
+    ts = np.zeros((2, len(chis)))
+    ts[0, :] = chis
+
+    for chidx, chi in enumerate(chis):
+        print("**************************************************************")
+        print("Timing chi= ", chi)
+        mps = np.random.rand(chi, d, chi).astype(np.float32)
+        L = np.random.rand(chiM, chi, chi).astype(np.float32)
+        R = np.random.rand(chiM, chi, chi).astype(np.float32)
+        mpo = np.random.rand(chiM, chiM, d, d).astype(np.float32)
+
+        t_chi, _, _ = time_eigensolve_fixed(mps, L, R, mpo, n_krylov,
+                                            n_restart, n_tries)
+        ts[1, chidx] = t_chi
+    return ts
+
+
+def time_eigensolve_fixed(mps, L, R, mpo, n_krylov, n_restart, n_tries):
+    """
+    Times the Lanczos minimum eigenproblem on a single DMRG site
+    with given specific tensors. mps, L, R, mpo are these tensors;
+    the other parameters are the same as those described in
+    time_dmrg_eigensolve.
+
+    RETURNS
+    ------
+    dt (float) : The measured time.
+    E  (float) : The computed eigenvalue.
+    eV (array) : The computed eigenvector.
+    """
+    mps = jnp.array(mps)
+    L = jnp.array(L)
+    R = jnp.array(R)
+    mpo = jnp.array(mpo)
+    jax_map = jax_dmrg.map.SingleMPOHeffMap(mpo, L, R)
+
+    dts = np.zeros(n_tries)
+    for i in range(n_tries):
+        t0 = benchmark.tick()
+        E, eV, _ = lz.minimum_eigenpair(jax_map, n_krylov,
+                                        maxiter=n_restart)
+        dts[i] = benchmark.tock(t0, eV)
+    dt = np.amin(dts)
+    print("t = ", dt, "E = ", E)
+    return (dt, E, eV)
 
 
 def time_tridiagonalize(chis, n_krylov, fname="./tridiag_timings.txt"):
@@ -123,7 +203,7 @@ def time_xx(chis=None, N=100, N_sweeps=1, fname="./xxtimings.txt",
     for chi in chis:
         print("**************************************************************")
         print("Timing chi= ", chi)
-        #  Es, mps_chain, _, _ = xx_ground_state(N, chi, 1)
+        _ = xx_ground_state(N, chi, 1, ncv=2, lz_maxiter=1)
         #  for mps in mps_chain:
         #      mps = mps.block_until_ready()
         _, _, _, timing = xx_ground_state(N, chi, N_sweeps, ncv=ncv,
@@ -151,10 +231,11 @@ def time_xx(chis=None, N=100, N_sweeps=1, fname="./xxtimings.txt",
     return timings
 
 
-def xx_ground_state(N, maxchi, N_sweeps, ncv=4, lz_tol=1E-12, lz_maxiter=2):
+def xx_ground_state(N, maxchi, N_sweeps, ncv=20, lz_tol=1E-5, lz_maxiter=50):
     """
     Find the ground state of the quantum XX model with single-site DMRG.
     """
+    
 
     mpo_chain = [ops.xx_mpo() for _ in range(N)]
     lz_params = lz.lz_params(ncv=ncv, lz_tol=lz_tol, lz_maxiter=lz_maxiter)
